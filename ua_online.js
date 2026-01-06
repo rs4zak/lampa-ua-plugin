@@ -1,305 +1,197 @@
-(function() {
+(function () {
     'use strict';
+
+    if (window.ua_online_plugin) return;
+    window.ua_online_plugin = true;
 
     var manifest = {
         type: 'video',
-        version: '1.2',
-        name: 'UA Online - Український контент',
-        description: 'Плагін для україномовних фільмів і серіалів з UAKino, HDRezka UA, Toloka, Takflix, UAKino.best та UASerials. Підтримує високоякісний стрімінг та авторизацію в HDRezka.',
-        component: 'ua_online'
+        version: '1.3',
+        name: 'UA Films',
+        description: 'Українські фільми: uakino.best / uaserials.top / hdrezka',
+        component: 'ua_films'
     };
 
     Lampa.Manifest.plugins = manifest;
 
     var component = {
-        object: {},
-        network: new Lampa.Reguest(),
-        scroll: new Lampa.Scroll({mask: true, over: true}),
-        items: [],
         html: $('<div></div>'),
-        empty: function() {
-            this.html.append(Lampa.Template.get('list_empty', {}));
-            this.draw();
-        },
-        start: function() {
-            Lampa.Controller.enable('content');
-            this.build();
-            this.card();
-        },
-        build: function() {
-            this.html.append(this.scroll.render());
-            this.html.append('<div class="online__footer"></div>');
-            this.loading = false;
-        },
-        card: function() {
-            var _this = this;
-            this.activity.loader(true);
-            this.load(function() {
-                _this.activity.loader(false);
-                _this.activity.toggle();
-            });
-        },
-        init: function() {
+        scroll: null,
+        activity: null,
+        movie: null,
+
+        init: function () {
+            this.scroll = new Lampa.Scroll({ mask: true });
+
             this.activity = new Lampa.Activity({
-                url: '',
-                title: manifest.name,
-                component: 'ua_online',
+                component: 'ua_films',
+                title: 'Дивитись українською',
                 page: 1
             });
+
             this.activity.on('load', this.start.bind(this));
         },
-        load: function(callback) {
+
+        start: function () {
+            this.movie = this.activity.params.movie;
+            this.html.empty();
+            this.html.append(this.scroll.render());
+
+            if (!this.movie || !this.movie.title) {
+                return this.empty();
+            }
+
+            this.searchUAKino();
+        },
+
+        /* ===================== UAKINO ===================== */
+
+        searchUAKino: function () {
             var _this = this;
-            _this.activity.loader(true);
-            var query = encodeURIComponent(this.object.movie.title + (this.object.movie.year ? ' ' + this.object.movie.year : ''));
-            var sources = ['uakino', 'hdrezka_ua', 'toloka', 'takflix', 'uakino_best', 'uaserials'];
-            var results = [];
+            var q = encodeURIComponent(this.movie.title);
 
-            function getHDRezkaMirror() {
-                var mirror = Lampa.Storage.get('ua_hdrezka_mirror', 'https://hdrezka.ag').replace(/\/$/, '');
-                if (!mirror.startsWith('https://')) mirror = 'https://' + mirror;
-                return mirror;
-            }
+            Lampa.Reguest.silent(
+                'https://uakino.best/index.php?do=search&subaction=search&story=' + q,
+                function (html) {
+                    var dom = $('<div>' + html + '</div>');
+                    var item = dom.find('.movie-item a').first();
 
-            function getHDRezkaCookie() {
-                var cookie = Lampa.Storage.get('ua_hdrezka_cookie', '');
-                if (cookie.indexOf('PHPSESSID=') === -1) {
-                    cookie = 'PHPSESSID=' + (Math.random().toString(36).substr(2, 26)) + (cookie ? '; ' + cookie : '');
-                }
-                return cookie;
-            }
-
-            function fetchWithProxy(url, useProxy, headers = {}) {
-                if (useProxy) {
-                    var proxyUrl = Lampa.Storage.get('ua_online_proxy_url', 'https://cors-anywhere.herokuapp.com/');
-                    url = proxyUrl + url;
-                }
-                if (url.includes('hdrezka')) {
-                    headers.Cookie = getHDRezkaCookie();
-                }
-                return _this.network.silent(url, function(html) {
-                    return html;
-                }, function() {
-                    Lampa.Noty.show('Помилка з\'єднання. Спробуйте VPN.');
-                    return null;
-                }, null, { headers: headers, withCredentials: true });
-            }
-
-            function hdrezkaLogin(success, error) {
-                var host = getHDRezkaMirror();
-                var login = Lampa.Storage.get('ua_hdrezka_login', '');
-                var password = Lampa.Storage.get('ua_hdrezka_password', '');
-                if (!login || !password) {
-                    Lampa.Noty.show('Введіть логін та пароль для HDRezka в налаштуваннях.');
-                    if (error) error();
-                    return;
-                }
-                var postdata = {
-                    login_name: login,
-                    login_password: password,
-                    login_not_save: 0
-                };
-                var url = host + '/ajax/login/';
-                _this.network.native(url, function(result, response, headers) {
-                    if (response.success) {
-                        Lampa.Storage.set('ua_hdrezka_status', 'true');
-                        var setCookies = headers['set-cookie'] || [];
-                        var cookieStr = setCookies.map(c => c.split(';')[0]).join('; ');
-                        Lampa.Storage.set('ua_hdrezka_cookie', cookieStr);
-                        verifyHDRezkaSession(success, error);
+                    if (item.length) {
+                        _this.loadPlayer(item.attr('href'), _this.searchUASerials);
                     } else {
-                        Lampa.Noty.show(response.message || 'Помилка авторизації в HDRezka.');
-                        Lampa.Storage.set('ua_hdrezka_status', 'false');
-                        if (error) error();
+                        _this.searchUASerials();
                     }
-                }, function() {
-                    Lampa.Noty.show('Помилка запиту до HDRezka.');
-                    if (error) error();
-                }, postdata, { dataType: 'json', withCredentials: true, returnHeaders: true });
-            }
-
-            function verifyHDRezkaSession(success, error) {
-                var host = getHDRezkaMirror();
-                var url = host + '/';
-                var headers = { Cookie: getHDRezkaCookie() };
-                _this.network.silent(url, function(html) {
-                    if (html.indexOf('<form id="login-form"') === -1) {
-                        Lampa.Noty.show('Авторизація в HDRezka успішна!');
-                        if (success) success();
-                    } else {
-                        Lampa.Noty.show('Сесія HDRezka невалідна. Спробуйте знову.');
-                        Lampa.Storage.set('ua_hdrezka_status', 'false');
-                        if (error) error();
-                    }
-                }, function() {
-                    if (error) error();
-                }, null, { headers: headers });
-            }
-
-            function parseUAKino(html) {
-                var items = [];
-                $(html).find('.movie-item').each(function() {
-                    var title = $(this).find('.movie-title').text();
-                    var link = $(this).find('a').attr('href');
-                    var quality = $(this).find('.quality').text() || 'HD';
-                    if (title.match(/україн/i)) {
-                        items.push({title: title, url: 'https://uakino.club' + link, quality: quality});
-                    }
-                });
-                return items;
-            }
-
-            function parseHDRezkaUA(html) {
-                var items = [];
-                $(html).find('.b-post__title').each(function() {
-                    var title = $(this).text();
-                    var link = $(this).find('a').attr('href');
-                    var quality = 'Full HD';
-                    if (title.match(/україн/i) || link.includes('ua')) {
-                        items.push({title: title, url: link, quality: quality});
-                    }
-                });
-                return items;
-            }
-
-            function parseUAKinoBest(html) {
-                var items = [];
-                $(html).find('.film-item').each(function() {  
-                    var title = $(this).find('.film-title').text();
-                    var link = $(this).find('a').attr('href');
-                    var quality = $(this).find('.hd-tag').text() || 'HD';
-                    if (title.match(/україн/i)) {
-                        items.push({title: title, url: 'https://uakino.best' + link, quality: quality});
-                    }
-                });
-                return items;
-            }
-
-            function parseUASerials(html) {
-                var items = [];
-                $(html).find('.serial-item').each(function() {  
-                    var title = $(this).find('.serial-title').text();
-                    var link = $(this).find('a').attr('href');
-                    var quality = 'Full HD';  
-                    if (title.match(/україн/i)) {
-                        items.push({title: title, url: 'https://uaserials.pro' + link, quality: quality});
-                    }
-                });
-                return items;
-            }
-
-            function parseToloka(html) {
-                var items = [];
-                $(html).find('.torrent-item').each(function() {  // Припустима структура для Toloka
-                    var title = $(this).find('.title').text();
-                    var link = $(this).find('a').attr('href');
-                    var quality = 'HD';  // Припустимо
-                    if (title.match(/україн/i)) {
-                        items.push({title: title, url: 'https://toloka.to' + link, quality: quality});
-                    }
-                });
-                return items;
-            }
-
-            function parseTakflix(html) {
-                var items = [];
-                $(html).find('.film-card').each(function() {  // Припустима структура для Takflix
-                    var title = $(this).find('.title').text();
-                    var link = $(this).find('a').attr('href');
-                    var quality = 'Full HD';  // Припустимо
-                    if (title.match(/україн/i)) {
-                        items.push({title: title, url: 'https://takflix.com' + link, quality: quality});
-                    }
-                });
-                return items;
-            }
-
-            var promises = sources.map(function(source) {
-                var url;
-                var parser;
-                switch(source) {
-                    case 'uakino': url = 'https://uakino.club/search?q=' + query; parser = parseUAKino; break;
-                    case 'hdrezka_ua': url = getHDRezkaMirror() + '/search/?do=search&subaction=search&q=' + query; parser = parseHDRezkaUA; break;
-                    case 'toloka': url = 'https://toloka.to/search.php?search=' + query + '&lang=ua'; parser = parseToloka; break;
-                    case 'takflix': url = 'https://takflix.com/en/search?q=' + query; parser = parseTakflix; break;
-                    case 'uakino_best': url = 'https://uakino.best/search?q=' + query; parser = parseUAKinoBest; break;
-                    case 'uaserials': url = 'https://uaserials.pro/search?q=' + query; parser = parseUASerials; break;
+                },
+                function () {
+                    _this.searchUASerials();
                 }
-                return fetchWithProxy(url, Lampa.Storage.get('ua_online_use_proxy', true)).then(function(html) {
-                    if (html) return parser(html);
-                    return [];
-                }).catch(function(err) {
-                    console.log('Error in parser: ' + source, err);
-                    return [];
-                });
-            });
+            );
+        },
 
-            Promise.all(promises).then(function(allItems) {
-                results = allItems.flat();
-                if (results.length) {
-                    _this.append(results);
-                } else {
+        /* ===================== UASERIALS ===================== */
+
+        searchUASerials: function () {
+            var _this = this;
+            var q = encodeURIComponent(this.movie.title);
+
+            Lampa.Reguest.silent(
+                'https://uaserials.top/search/?q=' + q,
+                function (html) {
+                    var dom = $('<div>' + html + '</div>');
+                    var item = dom.find('.short-item a').first();
+
+                    if (item.length) {
+                        _this.loadPlayer(item.attr('href'), _this.searchRezka);
+                    } else {
+                        _this.searchRezka();
+                    }
+                },
+                function () {
+                    _this.searchRezka();
+                }
+            );
+        },
+
+        /* ===================== HDREZKA ===================== */
+
+        searchRezka: function () {
+            var _this = this;
+            var q = encodeURIComponent(this.movie.title);
+
+            Lampa.Reguest.silent(
+                'https://hdrezka.ag/search/?do=search&subaction=search&q=' + q,
+                function (html) {
+                    var dom = $('<div>' + html + '</div>');
+                    var item = dom.find('.b-content__inline_item a').first();
+
+                    if (item.length) {
+                        _this.loadPlayer(item.attr('href'), _this.empty);
+                    } else {
+                        _this.empty();
+                    }
+                },
+                function () {
                     _this.empty();
                 }
-                callback();
-            }).catch(function(err) {
-                console.log('Load error', err);
-                _this.empty();
-                callback();
-            });
+            );
         },
-        append: function(items) {
+
+        /* ===================== PLAYER ===================== */
+
+        loadPlayer: function (url, fallback) {
             var _this = this;
-            items.forEach(function(element) {
-                var card = Lampa.Template.get('online_mod', {
-                    title: element.title,
-                    quality: element.quality,
-                    info: ''
-                });
-                card.on('hover:focus', function() {
-                    _this.selected = element.url;
-                    Lampa.Player.play({
-                        url: element.url,
-                        title: element.title,
-                        quality: { 'HD': element.url }
-                    });
-                });
-                _this.scroll.append(card);
+
+            Lampa.Reguest.silent(
+                url,
+                function (html) {
+                    var match = html.match(/(https?:\/\/[^"']+\.m3u8[^"']*)/);
+
+                    if (!match) {
+                        fallback.call(_this);
+                        return;
+                    }
+
+                    _this.render(match[1]);
+                },
+                function () {
+                    fallback.call(_this);
+                }
+            );
+        },
+
+        render: function (stream) {
+            var title = this.movie.title;
+
+            var card = Lampa.Template.get('online_mod', {
+                title: title,
+                quality: 'Full HD'
             });
+
+            card.on('hover:enter', function () {
+                Lampa.Player.play({
+                    title: title,
+                    url: stream,
+                    quality: {
+                        'Full HD': stream
+                    }
+                });
+            });
+
+            this.scroll.append(card);
+            this.activity.toggle();
+        },
+
+        empty: function () {
+            this.html.append(Lampa.Template.get('list_empty', {
+                title: 'Української версії не знайдено'
+            }));
+            this.activity.toggle();
         }
     };
 
-    // Налаштування
-    Lampa.Params.input('ua_hdrezka_mirror', 'HDRezka Дзеркало (URL)', 'https://hdrezka.ag');
-    Lampa.Params.input('ua_hdrezka_login', 'HDRezka Логін (email)', '');
-    Lampa.Params.input('ua_hdrezka_password', 'HDRezka Пароль', '');
-    Lampa.Params.trigger('ua_hdrezka_login_btn', 'Авторизуватися в HDRezka', function() {
-        component.hdrezkaLogin(function() {}, function() {});
-    });
-    Lampa.Params.select('ua_online_use_proxy', 'Використовувати проксі для обходу блоків', true, [true, false]);
-    Lampa.Params.input('ua_online_proxy_url', 'URL проксі (наприклад, CORS)', 'https://cors-anywhere.herokuapp.com/');
+    /* ===================== REGISTER ===================== */
 
-    // Ініціалізація
-    function startPlugin() {
-        window.ua_online_plugin = true;
-        Lampa.Component.add('ua_online', component);
-        Lampa.Listener.follow('full', function(e) {
-            if (e.type == 'open' && e.body.find('.view--online').length == 0) {
-                var button = $('<div class="full-start__button selector view--online"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-link"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path></svg><span>Переглянути українською</span></div>');
-                button.on('hover:enter', function() {
-                    component.object = e.object;
-                    Lampa.Activity.push({
-                        url: '',
-                        component: 'ua_online',
-                        movie: e.object.movie,
-                        title: e.object.movie.title,
-                        page: 1
-                    });
-                });
-                e.body.find('.full-start__buttons').append(button);
-            }
+    Lampa.Component.add('ua_films', component);
+    component.init(); // 🔥 КРИТИЧНО ВАЖЛИВО
+
+    /* ===================== BUTTON ===================== */
+
+    Lampa.Listener.follow('full', function (e) {
+        if (e.type !== 'open') return;
+
+        var btn = $('<div class="full-start__button selector"><span>Дивитись українською</span></div>');
+
+        btn.on('hover:enter', function () {
+            Lampa.Activity.push({
+                component: 'ua_films',
+                movie: e.object.movie
+            });
         });
-    }
 
-    if (!window.ua_online_plugin) startPlugin();
+        e.body
+            .find('.full-start__actions, .full-start__buttons')
+            .first()
+            .append(btn);
+    });
+
 })();
