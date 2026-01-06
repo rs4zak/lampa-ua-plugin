@@ -188,10 +188,17 @@
                 return items;
             }
 
-            // ... (parseToloka та parseTakflix - додайте логіку, якщо потрібно, наприклад:
-            // function parseToloka(html) { ... }
-            // function parseTakflix(html) { ... }
-            // )
+            function parseToloka(html) {
+                var items = [];
+                // Додайте логіку парсингу для Toloka, якщо потрібно. Поки повертає порожній масив.
+                return items;
+            }
+
+            function parseTakflix(html) {
+                var items = [];
+                // Додайте логіку парсингу для Takflix, якщо потрібно. Поки повертає порожній масив.
+                return items;
+            }
 
             var promises = sources.map(function(source) {
                 var url;
@@ -204,7 +211,7 @@
                     case 'uakino_best': url = 'https://uakino.best/search?q=' + query; parser = parseUAKinoBest; break;
                     case 'uaserials': url = 'https://uaserials.pro/search?q=' + query; parser = parseUASerials; break;
                 }
-                return fetchWithProxy(url, Lampa.Storage.get('ua_online_use_proxy', true)).then(parser);
+                return fetchWithProxy(url, Lampa.Storage.get('ua_online_use_proxy', true)).then(parser || function() { return []; });
             });
 
             Promise.all(promises).then(function(allItems) {
@@ -241,7 +248,7 @@
         }
     };
 
-    // Налаштування
+    // Налаштування без змін
     Lampa.Params.input('ua_hdrezka_mirror', 'HDRezka Дзеркало (URL)', 'https://hdrezka.ag');
     Lampa.Params.input('ua_hdrezka_login', 'HDRezka Логін (email)', '');
     Lampa.Params.input('ua_hdrezka_password', 'HDRezka Пароль', '');
