@@ -1,62 +1,67 @@
 (function () {
     'use strict';
 
-    if (window.ua_plugin_loaded) return;
-    window.ua_plugin_loaded = true;
+    if (window.ua_online_loaded) return;
+    window.ua_online_loaded = true;
 
-    // Створюємо функцію пошуку
-    function UAComponent(object) {
+    function UAOnline(object) {
         var network = new Lampa.Reguest();
         var scroll = new Lampa.Scroll({mask: true, over: true});
+        var items = [];
         
         this.create = function () {
             var _this = this;
-            var title = object.movie.title;
-            
-            // Створюємо порожню картку-посилання на пошук
-            var card = Lampa.Template.get('online_mod', {
-                title: 'Шукати "' + title + '" на UA ресурсах',
-                quality: 'UA'
+            // Використовуємо універсальний API пошуку для українських ресурсів
+            var url = 'https://cors.uamods.workers.dev/?url=' + encodeURIComponent('https://it-serv.xyz/lampa/search?title=' + object.movie.title);
+
+            network.silent(url, function (data) {
+                if (data && data.length > 0) {
+                    data.forEach(function (item) {
+                        var card = Lampa.Template.get('online_mod', {
+                            title: item.title || object.movie.title,
+                            quality: item.quality || 'HD'
+                        });
+
+                        card.on('hover:enter', function () {
+                            Lampa.Player.play({
+                                url: item.url,
+                                title: item.title || object.movie.title
+                            });
+                        });
+                        scroll.append(card);
+                    });
+                } else {
+                    _this.empty();
+                }
+                _this.activity.toggle();
+            }, function () {
+                _this.empty();
             });
 
-            card.on('hover:enter', function () {
-                // При натисканні відкриваємо зовнішній пошук або плеєр
-                Lampa.Select.show({
-                    title: 'Виберіть джерело',
-                    items: [
-                        {title: 'UAKino (Онлайн)', source: 'uakino'},
-                        {title: 'UAseriali (Онлайн)', source: 'uaseriali'}
-                    ],
-                    onSelect: function(item){
-                        Lampa.Noty.show('Пошук на ' + item.title + ' запущено');
-                        // Тут можна додати перехід на конкретний сайт
-                    }
-                });
-            });
-
-            scroll.append(card);
             return scroll.render();
+        };
+
+        this.empty = function () {
+            scroll.append(Lampa.Template.get('list_empty'));
+            this.activity.toggle();
         };
     }
 
-    // Додаємо кнопку безпосередньо в інтерфейс
     Lampa.Listener.follow('full', function (e) {
         if (e.type == 'complite' || e.type == 'open') {
-            // Перевіряємо чи вже є кнопка, щоб не дублювати
-            if (e.body.find('.view--ua-online').length > 0) return;
+            if (e.body.find('.btn--ua-online').length > 0) return;
 
-            var btn = $('<div class="full-start__button selector view--ua-online"><span>Дивитись UA</span></div>');
+            var btn = $('<div class="full-start__button selector btn--ua-online"><span>Дивитись UA</span></div>');
             
             btn.on('hover:enter', function () {
-                Lampa.Component.add('ua_plugin', UAComponent);
+                Lampa.Component.add('ua_online', UAOnline);
                 Lampa.Activity.push({
                     title: 'Українською',
-                    component: 'ua_plugin',
+                    component: 'ua_online',
                     movie: e.object.movie
                 });
             });
 
-            // Додаємо в початок списку кнопок
             e.body.find('.full-start__actions').prepend(btn);
         }
     });
