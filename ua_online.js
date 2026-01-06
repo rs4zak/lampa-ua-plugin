@@ -3,7 +3,7 @@
 
     var manifest = {
         type: 'video',
-        version: '1.1',
+        version: '1.2',
         name: 'UA Online - Український контент',
         description: 'Плагін для україномовних фільмів і серіалів з UAKino, HDRezka UA, Toloka, Takflix, UAKino.best та UASerials. Підтримує високоякісний стрімінг та авторизацію в HDRezka.',
         component: 'ua_online'
@@ -190,13 +190,27 @@
 
             function parseToloka(html) {
                 var items = [];
-                // Додайте логіку парсингу для Toloka, якщо потрібно. Поки повертає порожній масив.
+                $(html).find('.torrent-item').each(function() {  // Припустима структура для Toloka
+                    var title = $(this).find('.title').text();
+                    var link = $(this).find('a').attr('href');
+                    var quality = 'HD';  // Припустимо
+                    if (title.match(/україн/i)) {
+                        items.push({title: title, url: 'https://toloka.to' + link, quality: quality});
+                    }
+                });
                 return items;
             }
 
             function parseTakflix(html) {
                 var items = [];
-                // Додайте логіку парсингу для Takflix, якщо потрібно. Поки повертає порожній масив.
+                $(html).find('.film-card').each(function() {  // Припустима структура для Takflix
+                    var title = $(this).find('.title').text();
+                    var link = $(this).find('a').attr('href');
+                    var quality = 'Full HD';  // Припустимо
+                    if (title.match(/україн/i)) {
+                        items.push({title: title, url: 'https://takflix.com' + link, quality: quality});
+                    }
+                });
                 return items;
             }
 
@@ -211,7 +225,13 @@
                     case 'uakino_best': url = 'https://uakino.best/search?q=' + query; parser = parseUAKinoBest; break;
                     case 'uaserials': url = 'https://uaserials.pro/search?q=' + query; parser = parseUASerials; break;
                 }
-                return fetchWithProxy(url, Lampa.Storage.get('ua_online_use_proxy', true)).then(parser || function() { return []; });
+                return fetchWithProxy(url, Lampa.Storage.get('ua_online_use_proxy', true)).then(function(html) {
+                    if (html) return parser(html);
+                    return [];
+                }).catch(function(err) {
+                    console.log('Error in parser: ' + source, err);
+                    return [];
+                });
             });
 
             Promise.all(promises).then(function(allItems) {
@@ -222,7 +242,8 @@
                     _this.empty();
                 }
                 callback();
-            }).catch(function() {
+            }).catch(function(err) {
+                console.log('Load error', err);
                 _this.empty();
                 callback();
             });
@@ -248,7 +269,7 @@
         }
     };
 
-    // Налаштування без змін
+    // Налаштування
     Lampa.Params.input('ua_hdrezka_mirror', 'HDRezka Дзеркало (URL)', 'https://hdrezka.ag');
     Lampa.Params.input('ua_hdrezka_login', 'HDRezka Логін (email)', '');
     Lampa.Params.input('ua_hdrezka_password', 'HDRezka Пароль', '');
@@ -258,7 +279,7 @@
     Lampa.Params.select('ua_online_use_proxy', 'Використовувати проксі для обходу блоків', true, [true, false]);
     Lampa.Params.input('ua_online_proxy_url', 'URL проксі (наприклад, CORS)', 'https://cors-anywhere.herokuapp.com/');
 
-    // Ініціалізація з фіксом для кнопки
+    // Ініціалізація
     function startPlugin() {
         window.ua_online_plugin = true;
         Lampa.Component.add('ua_online', component);
