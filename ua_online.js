@@ -164,7 +164,7 @@
 
             function parseUAKinoBest(html) {
                 var items = [];
-                $(html).find('.film-item').each(function() {  // Припустима структура, адаптуйте якщо сайт змінився
+                $(html).find('.film-item').each(function() {  
                     var title = $(this).find('.film-title').text();
                     var link = $(this).find('a').attr('href');
                     var quality = $(this).find('.hd-tag').text() || 'HD';
@@ -177,10 +177,10 @@
 
             function parseUASerials(html) {
                 var items = [];
-                $(html).find('.serial-item').each(function() {  // Припустима структура для uaserials.pro
+                $(html).find('.serial-item').each(function() {  
                     var title = $(this).find('.serial-title').text();
                     var link = $(this).find('a').attr('href');
-                    var quality = 'Full HD';  // Зазвичай серіали в HD
+                    var quality = 'Full HD';  
                     if (title.match(/україн/i)) {
                         items.push({title: title, url: 'https://uaserials.pro' + link, quality: quality});
                     }
@@ -188,7 +188,10 @@
                 return items;
             }
 
-            // ... (parseToloka та parseTakflix без змін, додайте якщо потрібно)
+            // ... (parseToloka та parseTakflix - додайте логіку, якщо потрібно, наприклад:
+            // function parseToloka(html) { ... }
+            // function parseTakflix(html) { ... }
+            // )
 
             var promises = sources.map(function(source) {
                 var url;
@@ -238,7 +241,7 @@
         }
     };
 
-    // Налаштування без змін
+    // Налаштування
     Lampa.Params.input('ua_hdrezka_mirror', 'HDRezka Дзеркало (URL)', 'https://hdrezka.ag');
     Lampa.Params.input('ua_hdrezka_login', 'HDRezka Логін (email)', '');
     Lampa.Params.input('ua_hdrezka_password', 'HDRezka Пароль', '');
