@@ -1,18 +1,20 @@
 (function () {
     'use strict';
 
-    if (window.ua_online_plugin) return;
-    window.ua_online_plugin = true;
+    if (window.ua_films_loaded) return;
+    window.ua_films_loaded = true;
 
     var manifest = {
         type: 'video',
-        version: '1.3',
+        version: '1.4',
         name: 'UA Films',
-        description: 'Українські фільми: uakino.best / uaserials.top / hdrezka',
+        description: 'Українські фільми та серіали (uakino / uaserials / hdrezka)',
         component: 'ua_films'
     };
 
-    Lampa.Manifest.plugins = manifest;
+    if (Array.isArray(Lampa.Manifest.plugins)) {
+        Lampa.Manifest.plugins.push(manifest);
+    }
 
     var component = {
         html: $('<div></div>'),
@@ -44,8 +46,6 @@
             this.searchUAKino();
         },
 
-        /* ===================== UAKINO ===================== */
-
         searchUAKino: function () {
             var _this = this;
             var q = encodeURIComponent(this.movie.title);
@@ -67,8 +67,6 @@
                 }
             );
         },
-
-        /* ===================== UASERIALS ===================== */
 
         searchUASerials: function () {
             var _this = this;
@@ -92,8 +90,6 @@
             );
         },
 
-        /* ===================== HDREZKA ===================== */
-
         searchRezka: function () {
             var _this = this;
             var q = encodeURIComponent(this.movie.title);
@@ -116,21 +112,14 @@
             );
         },
 
-        /* ===================== PLAYER ===================== */
-
         loadPlayer: function (url, fallback) {
             var _this = this;
 
             Lampa.Reguest.silent(
                 url,
                 function (html) {
-                    var match = html.match(/(https?:\/\/[^"']+\.m3u8[^"']*)/);
-
-                    if (!match) {
-                        fallback.call(_this);
-                        return;
-                    }
-
+                    var match = html.match(/(https?:\/\/[^"' ]+\.m3u8[^"' ]*)/);
+                    if (!match) return fallback.call(_this);
                     _this.render(match[1]);
                 },
                 function () {
@@ -151,9 +140,7 @@
                 Lampa.Player.play({
                     title: title,
                     url: stream,
-                    quality: {
-                        'Full HD': stream
-                    }
+                    quality: { 'Full HD': stream }
                 });
             });
 
@@ -162,19 +149,15 @@
         },
 
         empty: function () {
-            this.html.append(Lampa.Template.get('list_empty', {
-                title: 'Української версії не знайдено'
-            }));
+            this.html.append(
+                Lampa.Template.get('list_empty', { title: 'UA версію не знайдено' })
+            );
             this.activity.toggle();
         }
     };
 
-    /* ===================== REGISTER ===================== */
-
     Lampa.Component.add('ua_films', component);
-    component.init(); // 🔥 КРИТИЧНО ВАЖЛИВО
-
-    /* ===================== BUTTON ===================== */
+    component.init();
 
     Lampa.Listener.follow('full', function (e) {
         if (e.type !== 'open') return;
@@ -188,10 +171,7 @@
             });
         });
 
-        e.body
-            .find('.full-start__actions, .full-start__buttons')
-            .first()
-            .append(btn);
+        e.body.find('.full-start__actions').append(btn);
     });
 
 })();
